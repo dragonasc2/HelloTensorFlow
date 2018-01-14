@@ -3,11 +3,9 @@ import input_data
 import numpy
 
 NUM_CLASS = 10
-
 IMAGE_H = 28
 IMAGE_W = 28
 BATCH_SIZE = 100
-
 
 def interence(images_flat,conv1_size,conv2_size,fc1_size,keep_prob):
 
