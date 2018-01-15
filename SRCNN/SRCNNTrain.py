@@ -46,25 +46,28 @@ def main():
     optimizer = tf.train.AdamOptimizer(1e-5).minimize(MSE)
     SRCNN_train_set = SRCNN.prepare_training.read_train_set('Set91')
     SRCNN_test_set = SRCNN.prepare_training.read_test_set('baby')
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        for i in range(1000000):
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction  = 0.5
+    with tf.Session(config = config) as sess:
+        with tf.device('/device:GPU:0'):
+            sess.run(tf.global_variables_initializer())
+            for i in range(1000000):
 
-            bicubiced_LR_batch,SR_batch = SRCNN_train_set.next_batch(100)
+                bicubiced_LR_batch,SR_batch = SRCNN_train_set.next_batch(100)
 
-            sess.run(optimizer,feed_dict=
-            {
-                LR_placeholder : bicubiced_LR_batch,
-                GT_placeholder : SR_batch
-            })
-            if(i%100==0):
-                bicubiced_LR_Images,GT_SR_Images = SRCNN_test_set.next_batch(1)
-
-                print('step %d : PSNR: %.5f' % (i, sess.run(PSNR,feed_dict=
+                sess.run(optimizer,feed_dict=
                 {
-                    LR_placeholder: bicubiced_LR_Images,
-                    GT_placeholder: GT_SR_Images
-                })))
+                    LR_placeholder : bicubiced_LR_batch,
+                    GT_placeholder : SR_batch
+                })
+                if(i%100==0):
+                    bicubiced_LR_Images,GT_SR_Images = SRCNN_test_set.next_batch(1)
+
+                    print('step %d : PSNR: %.5f' % (i, sess.run(PSNR,feed_dict=
+                    {
+                        LR_placeholder: bicubiced_LR_Images,
+                        GT_placeholder: GT_SR_Images
+                    })))
 
 
 if __name__=='__main__':
