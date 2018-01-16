@@ -10,33 +10,33 @@ def main():
 
     with tf.name_scope("conv1"):
         weights = tf.Variable(
-            tf.truncated_normal([9,9,1,64],stddev=0.001),
+            tf.truncated_normal([9,9,1,64],stddev=0.1),
             name = 'weights'
         )
         biases = tf.Variable(
-            tf.constant(0.00,dtype=tf.float32,shape=[64]),
+            tf.constant(0.01,dtype=tf.float32,shape=[64]),
             name = 'biases'
         )
         h_conv1 = tf.nn.relu(tf.nn.conv2d(LR_placeholder,weights,strides = [1,1,1,1],padding='VALID')+biases)
 
     with tf.name_scope("conv2"):
         weights = tf.Variable(
-            tf.truncated_normal([1,1,64,32],stddev=0.001),
+            tf.truncated_normal([1,1,64,32],stddev=0.1),
             name = 'weights'
         )
         biases = tf.Variable(
-            tf.constant(0.00,dtype=tf.float32,shape=[32]),
+            tf.constant(0.01,dtype=tf.float32,shape=[32]),
             name = 'biases'
         )
         h_conv2 = tf.nn.relu(tf.nn.conv2d(h_conv1,weights,strides=[1,1,1,1],padding='VALID')+biases)
 
     with tf.name_scope("conv3"):
         weights = tf.Variable(
-            tf.truncated_normal([5,5,32,1],stddev = 0.001),
+            tf.truncated_normal([5,5,32,1],stddev = 0.1),
             name = 'weights'
         )
         biases = tf.Variable(
-            tf.constant(0.00,dtype=tf.float32,shape=[1]),
+            tf.constant(0.01,dtype=tf.float32,shape=[1]),
             name = 'biases'
         )
         SR = tf.nn.conv2d(h_conv2,weights,strides=[1,1,1,1],padding='VALID')+biases
