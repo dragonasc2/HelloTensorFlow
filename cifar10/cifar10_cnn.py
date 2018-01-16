@@ -47,9 +47,9 @@ def maybe_download_and_extract():
     file_name = DATA_URL.split('/')[-1]
     file_path = os.path.join(dst_dir, file_name)
     if not os.path.exists(file_path):
-        def _progress(count,block_size,total_size):
-            sys.stdout.write('\r>> Downloading %s %.1f%%' % (file_name,float(count*block_size/total_size*100)))
-            sys.stdout.flush
+        def _progress(block_num, block_size, total_size):
+            sys.stdout.write('\r>> Downloading %s %.1f%%' % (file_name, block_num*block_size/total_size*100))
+            sys.stdout.flush()
         downloaded_file_path, _ = urllib.request.urlretrieve(DATA_URL,file_path,_progress)
         print()
         statinfo = os.stat(downloaded_file_path)
