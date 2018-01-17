@@ -106,7 +106,7 @@ def inference(images):
             tf.truncated_normal([5, 5, 3, 64],stddev=0.1)
         )
         biases = tf.Variable(
-            tf.constant(0.1, dtype=tf.float32, shape=[64])
+            tf.constant(0.01, dtype=tf.float32, shape=[64])
         )
         h_conv1 = tf.nn.relu(tf.nn.conv2d(images, weights, [1,1,1,1],'SAME') + biases, name=scope.name)
         _activation_summary(h_conv1)
@@ -119,7 +119,7 @@ def inference(images):
             name='weights'
         )
         biases = tf.Variable(
-            tf.constant(0.1, tf.float32, [64]),
+            tf.constant(0.01, tf.float32, [64]),
             name='biases'
         )
         h_conv2 = tf.nn.relu(tf.nn.conv2d(h_norm1, weights, [1, 1, 1, 1], 'SAME'))
@@ -134,7 +134,7 @@ def inference(images):
             name='weights'
         )
         biases = tf.Variable(
-            tf.constant(0.1,dtype=tf.float32,shape=[384]),
+            tf.constant(0.01,dtype=tf.float32,shape=[384]),
             name='biase'
         )
         h_local3 = tf.nn.relu(tf.matmul(h_norm2_flat, weights) + biases)
@@ -146,7 +146,7 @@ def inference(images):
             name='weights'
         )
         biases = tf.Variable(
-            tf.constant(0.1,dtype=tf.float32,shape=[192])
+            tf.constant(0.01,dtype=tf.float32,shape=[192])
         )
         h_local4 = tf.nn.relu(tf.matmul(h_local3, weights) + biases)
         _activation_summary(h_local4)
@@ -157,7 +157,7 @@ def inference(images):
             name='weights'
         )
         biases = tf.Variable(
-            tf.constant(0.1, dtype=tf.float32, shape=[NUM_CLASSES]),
+            tf.constant(0.01, dtype=tf.float32, shape=[NUM_CLASSES]),
             name='biases'
         )
         logits = tf.nn.softmax(tf.matmul(h_local4, weights) + biases)
@@ -216,34 +216,6 @@ def train(total_loss, global_step):
     with tf.control_dependencies([apply_gradient_op, variable_averages_op]):
         train_op = tf.no_op(name='train')
     return train_op
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def maybe_download_and_extract():
