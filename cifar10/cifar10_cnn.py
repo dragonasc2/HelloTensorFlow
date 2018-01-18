@@ -4,7 +4,7 @@ from six.moves import urllib
 import tensorflow as tf
 import tarfile
 import re
-import cifar10.cifar10_input as cifar10_input
+from cifar10 import cifar10_input
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -30,7 +30,7 @@ def _activation_summary(x):
     tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
 
-def _variable_on_cpu(name, shape, initializer):
+def _variable_on_cpu(name, initializer):
     """
     Helper to create a Variable stored in CPU memory
     :param name: name of the variable
@@ -40,8 +40,7 @@ def _variable_on_cpu(name, shape, initializer):
     """
     with tf.device('/cpu:0'):
         dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-        tf.get_variable()
-        var = tf.Variable(shape=shape, initial_value=initializer, name=name,dtype=dtype)
+        var = tf.Variable(initial_value=initializer, name=name,dtype=dtype)
     return var
 
 
@@ -55,10 +54,10 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
     :return: Variable Tensor
     """
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-    var = _variable_on_cpu(name, shape, tf.truncated_normal(shape, stddev=stddev, dtype=dtype))
-    if wd is not None:
+    var = _variable_on_cpu(name, tf.truncated_normal(shape, stddev=stddev, dtype=dtype))
+    if wd is not None and wd != 0:
         weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
-        tf.add_to_collection('losses',weight_decay)
+        tf.add_to_collection('losses', weight_decay)
     return var
 
 
@@ -81,7 +80,7 @@ def distorted_inputs():
     if FLAGS.use_fp16:
         images = tf.cast(images, tf.float16)
         labels = tf.cast(labels, tf.float16)
-    return images,labels
+    return images, labels
 
 
 def inputs(eval_data):
@@ -102,26 +101,33 @@ def inference(images):
     :return: logits
     """
     with tf.variable_scope('conv1') as scope:
-        weights = tf.Variable(
-            tf.truncated_normal([5, 5, 3, 64],stddev=0.1)
+        weights = _variable_with_weight_decay(
+            name='weights',
+            shape=[5, 5, 3, 64],
+            stddev=5e-2,
+            wd=0.0
         )
-        biases = tf.Variable(
-            tf.constant(0.01, dtype=tf.float32, shape=[64])
-        )
+        biases = _variable_on_cpu('biases', tf.constant(
+            0.1,
+            dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+            shape=[64]))
         h_conv1 = tf.nn.relu(tf.nn.conv2d(images, weights, [1,1,1,1],'SAME') + biases, name=scope.name)
         _activation_summary(h_conv1)
         h_pool1 = tf.nn.max_pool(h_conv1, [1, 2, 2, 1], [1, 2, 2, 1], 'SAME', name='pool')
         h_norm1 = tf.nn.lrn(h_pool1, depth_radius=5, bias=1.0, alpha= 0.001 / 9, beta=0.75, name='norm')
 
     with tf.variable_scope('conv2') as scope:
-        weights = tf.Variable(
-            tf.truncated_normal([5, 5, 64, 64], stddev=0.1),
-            name='weights'
+        weights = _variable_with_weight_decay(
+            name='weights',
+            shape=[5, 5, 64, 64],
+            stddev=5e-2,
+            wd=0.0
         )
-        biases = tf.Variable(
-            tf.constant(0.01, tf.float32, [64]),
-            name='biases'
-        )
+        biases = _variable_on_cpu('biases', tf.constant(
+            0.1,
+            dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+            shape=[64]
+        ))
         h_conv2 = tf.nn.relu(tf.nn.conv2d(h_norm1, weights, [1, 1, 1, 1], 'SAME'))
         _activation_summary(h_conv2)
         h_pool2 = tf.nn.max_pool(h_conv2, [1, 2, 2, 1],[1, 2, 2, 1], 'SAME', name='pool')
@@ -129,41 +135,52 @@ def inference(images):
 
     h_norm2_flat = tf.reshape(h_norm2, [-1, h_norm2.shape[1]*h_norm2.shape[2]*h_norm2.shape[3]])
     with tf.variable_scope('local3') as scope:
-        weights = tf.Variable(
-            tf.truncated_normal([h_norm2_flat.get_shape()[1].value, 384], stddev=0.1),
-            name='weights'
+        weights = _variable_with_weight_decay(
+            name='weights',
+            shape=[h_norm2_flat.get_shape()[1].value, 384],
+            stddev=0.1,
+            wd=0.004
         )
-        biases = tf.Variable(
-            tf.constant(0.01,dtype=tf.float32,shape=[384]),
-            name='biase'
-        )
+        biases = _variable_on_cpu('biases', tf.constant(
+            0.1,
+            dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+            shape=[384]
+        ))
         h_local3 = tf.nn.relu(tf.matmul(h_norm2_flat, weights) + biases)
         _activation_summary(h_local3)
 
     with tf.variable_scope('local4') as scope:
-        weights = tf.Variable(
-            tf.truncated_normal([384, 192], stddev=0.1),
-            name='weights'
+        weights = _variable_with_weight_decay(
+            name='weights',
+            shape=[384, 192],
+            stddev=0.1,
+            wd=0.004
         )
-        biases = tf.Variable(
-            tf.constant(0.01,dtype=tf.float32,shape=[192])
-        )
+        biases = _variable_on_cpu('biases', tf.constant(
+            0.01,
+            dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+            shape=[192]
+        ))
         h_local4 = tf.nn.relu(tf.matmul(h_local3, weights) + biases)
         _activation_summary(h_local4)
 
     with tf.variable_scope('linear_softmax') as scope:
-        weights = tf.Variable(
-            tf.truncated_normal([192, NUM_CLASSES], stddev=0.1),
-            name='weights'
+        weights = _variable_with_weight_decay(
+            name='weights',
+            shape=[192, NUM_CLASSES],
+            stddev=1/192.0,
+            wd=0
         )
-        biases = tf.Variable(
-            tf.constant(0.01, dtype=tf.float32, shape=[NUM_CLASSES]),
-            name='biases'
-        )
+        biases = _variable_on_cpu('biases', tf.constant(
+            0,
+            dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+            shape=[NUM_CLASSES]
+        ))
         logits = tf.nn.softmax(tf.matmul(h_local4, weights) + biases)
-        #_activation_summary(logits)
+        _activation_summary(logits)
 
     return logits
+
 
 def loss(logits, labels):
     labels = tf.cast(labels, tf.int64)
@@ -177,7 +194,7 @@ def _add_loss_summaries(total_loss):
     losses = tf.get_collection('losses')
     loss_averages_op = loss_averages.apply(losses + [total_loss])
     for l in losses + [total_loss]:
-        tf.summary.scalar(l.op.name + ' (raw)',l)
+        tf.summary.scalar(l.op.name + ' (raw)', l)
         tf.summary.scalar(l.op.name, loss_averages.average(l))
 
     return loss_averages_op
@@ -215,7 +232,7 @@ def train(total_loss, global_step):
 
     with tf.control_dependencies([apply_gradient_op, variable_averages_op]):
         train_op = tf.no_op(name='train')
-    return train_op
+    return train_op, lr
 
 
 def maybe_download_and_extract():

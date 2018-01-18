@@ -68,9 +68,8 @@ def main():
                     GT_placeholder : SR_batch
                 })
 
-
-                if(i%FLAGS.log_interval == 0):
-                    bicubiced_LR_Images,GT_SR_Images = SRCNN_test_set.next_batch(1)
+                if i % FLAGS.log_interval == 0:
+                    bicubiced_LR_Images, GT_SR_Images = SRCNN_test_set.next_batch(1)
                     test_psnr = sess.run(PSNR,feed_dict=
                     {
                         LR_placeholder: bicubiced_LR_Images,

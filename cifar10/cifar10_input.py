@@ -24,9 +24,9 @@ def read_cifar10(filename_queue):
 
     reader = tf.FixedLengthRecordReader(record_bytes=record_bytes)
     result.key, value = reader.read(filename_queue)
-    record_bytes = tf.decode_raw(value,tf.uint8)
+    record_bytes = tf.decode_raw(value, tf.uint8)
     result.label = tf.cast(
-        tf.strided_slice(record_bytes, [0], [label_bytes]),tf.int32
+        tf.strided_slice(record_bytes, [0], [label_bytes]), tf.int32
     )
 
     depth_major = tf.reshape(
@@ -38,7 +38,7 @@ def read_cifar10(filename_queue):
 
 def _generate_image_and_label_batch(image, label, min_queue_examples,
                                     batch_size, shuffle):
-    num_preprocess_threads = 16
+    num_preprocess_threads = 4
     if shuffle:
         images, label_batch = tf.train.shuffle_batch(
             [image, label],
@@ -102,7 +102,7 @@ def inputs(eval_data, data_dir, batch_size):
 
     filename_queue = tf.train.string_input_producer(filenames)
     read_input = read_cifar10(filename_queue)
-    reshape_image = tf.cast(read_input.uint8image, tf.float)
+    reshape_image = tf.cast(read_input.uint8image, tf.float16)
 
     height = IMAGE_SIZE
     width = IMAGE_SIZE
