@@ -54,10 +54,10 @@ def train():
         config.gpu_options.per_process_gpu_memory_fraction = 0.4
         with tf.train.MonitoredTrainingSession(
             checkpoint_dir=FLAGS.train_dir,
-            save_checkpoint_secs=100,
+            save_checkpoint_secs=None,
             hooks=[
-                #tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
-                tf.train.StopAtStepHook(last_step=200),
+                tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
+                #tf.train.StopAtStepHook(last_step=200),
                 tf.train.NanTensorHook(loss),
                 _LoggerHook()
             ],
