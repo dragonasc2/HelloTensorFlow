@@ -36,10 +36,14 @@ def train():
                 num_classes=VOCABULARY_SIZE
             )
         )
-        optimizer = tf.train.AdamOptimizer(1e-4).minimize(loss)
+        optimizer = tf.train.AdamOptimizer(1e-2).minimize(loss)
         input = word2vecor_input.word2vector_input()
-        with tf.Session() as sess:
+        config = tf.ConfigProto()
+        config.gpu_options.per_process_gpu_memory_fraction = 0.5
+        with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
+            average_loss = 0
+            period_test = 100
             for i in range(100000):
                 batch_input, batch_labels = input.next_batch(batch_size, 4)
                 _, L = sess.run([optimizer, loss], feed_dict=
@@ -47,8 +51,10 @@ def train():
                                        train_inputs : batch_input,
                                        train_labels : batch_labels
                                    })
-                if(i % 1 ==0):
-                    print('step %d, loss=%.4f' % (i, L))
+                average_loss += L
+                if(i % period_test ==0):
+                    print('step %d, average loss =%.4f' % (i, average_loss/period_test))
+                    average_loss = 0
 
 if __name__ == '__main__':
     train()
