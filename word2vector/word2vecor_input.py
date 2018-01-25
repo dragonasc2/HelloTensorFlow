@@ -23,10 +23,8 @@ class Word2vector_input:
         batch = np.ndarray(shape=(batch_size), dtype=np.int32)
         labels = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
         span = 2 * LR_window + 1 # [LR_window target LR_window]
-        if self._data_ptr < LR_window:
-            self._data_ptr = LR_window
-        elif self._data_ptr + LR_window >= len(self._data):
-            self._data_ptr = LR_window
+        if self._data_ptr + span >= len(self._data):
+            self._data_ptr = 0
         ptr = 0
         for i in range(batch_size // (2*LR_window)):
             window = self._data[self._data_ptr:self._data_ptr + span]
@@ -36,8 +34,8 @@ class Word2vector_input:
                 labels[ptr, 0] = window[j]
                 ptr += 1
             self._data_ptr += 1
-            if self._data_ptr + LR_window >= len(self._data):
-                self._data_ptr = LR_window
+            if self._data_ptr + span >= len(self._data):
+                self._data_ptr = 0
         return batch, labels
 
     @property

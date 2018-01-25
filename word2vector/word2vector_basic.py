@@ -16,8 +16,8 @@ for i in range (validate_size):
 def train():
     w2v_input = word2vecor_input.Word2vector_input()
     with tf.Graph().as_default():
-        train_inputs = tf.placeholder(tf.int32, [batch_size])
-        train_labels = tf.placeholder(tf.int32, [batch_size, 1])
+        train_inputs = tf.placeholder(tf.int32, [None])
+        train_labels = tf.placeholder(tf.int32, [None, 1])
         validate_inputs = tf.constant(validate_data, dtype=tf.int32)
 
         embeddings = tf.Variable(
@@ -44,7 +44,7 @@ def train():
             )
         )
 
-        optimizer = tf.train.AdamOptimizer(1e-2).minimize(loss)
+        optimizer = tf.train.AdamOptimizer().minimize(loss)
 
         norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), axis=1, keep_dims=True))
         norm_embeddings = embeddings / norm
@@ -58,7 +58,7 @@ def train():
             sess.run(tf.global_variables_initializer())
             average_loss = 0
             period_test = 1000
-            for i in range(100001):
+            for i in range(500001):
                 batch_input, batch_labels = w2v_input.next_batch(batch_size, 2)
                 _, L = sess.run([optimizer, loss], feed_dict=
                                    {
