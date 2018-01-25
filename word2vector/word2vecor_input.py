@@ -9,7 +9,7 @@ DATA_URL = 'http://mattmahoney.net/dc/'
 VOCABULARY_SIZE = 50000
 
 
-class word2vector_input:
+class Word2vector_input:
     def __init__(self):
         file_path = self._maybe_download('word2vector_data', 'text8.zip')
         words = self._read_data(file_path)
@@ -43,6 +43,12 @@ class word2vector_input:
     @property
     def num_data(self):
         return len(self._data)
+
+    def map_index_to_word(self, index):
+        return self._index_word_map[index]
+
+    def map_word_to_index(self, word):
+        return self._word_index_map[word]
 
     @staticmethod
     def _maybe_download(dst_dir, dst_file_name):
@@ -110,6 +116,6 @@ class word2vector_input:
 
 
 if __name__ == '__main__':
-    input = word2vector_input()
+    input = Word2vector_input()
     batch, labels = input.next_batch(16, 2)
     pass
