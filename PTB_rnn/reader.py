@@ -1,4 +1,4 @@
-
+# Author : Dragon_n
 
 import collections
 import os
@@ -69,6 +69,26 @@ def ptb_raw_data(download_path):
     valid_data = _file_to_word_ids(valid_path, word_to_id)
     test_data = _file_to_word_ids(test_path, word_to_id)
     return train_data, valid_data, test_data, word_to_id
+
+def ptb_producer(raw_data, batch_size, num_steps):
+    with tf.name_scope("PTBProducer", values=[raw_data, batch_size, num_steps]):
+        raw_data = tf.convert_to_tensor(raw_data, name="raw_data", dtype=tf.int32)
+        data_len = tf.size(raw_data)
+        batch_len = data_len // batch_size
+        data = tf.reshape(raw_data[0:batch_len * batch_size], [batch_size, batch_len])
+
+        epoch_size = (batch_len -1 ) // num_steps
+        assertion = tf.assert_positive(epoch_size, message="epoch_size == 0")
+        with tf.control_dependencies([assertion]):
+            epoch_size = tf.identity(epoch_size, name='epoch_size')
+
+        i = tf.train.range_input_producer(epoch_size, shuffle=False).dequeue()
+        x = tf.strided_slice(data, [0, i * num_steps], [batch_size, (i + 1) * num_steps])
+        x.set_shape([batch_size, num_steps])
+
+        y = tf.strided_slice(data, [0, i * num_steps + 1], [batch_size, (i + 1) * num_steps + 1])
+        y.set_shape([batch_size, num_steps])
+        return x, y
 
 
 
