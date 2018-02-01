@@ -7,7 +7,7 @@ import tensorflow as tf
 from PTB_rnn import reader
 from PTB_rnn import util
 
-tf.flags.DEFINE_String(
+tf.flags.DEFINE_string(
     "model", "small",
     "Type of Model. Options are : small, medium, large"
 )
@@ -15,7 +15,7 @@ tf.flags.DEFINE_string(
     "data_path", "PTB_data",
     "where to store the training/testing data"
 )
-tf.flags.DEFINE_String(
+tf.flags.DEFINE_string(
     "save_path", None,
     "Model output directgory"
 )
@@ -86,12 +86,97 @@ class PTBModel(object):
         self._cost = tf.reduce_sum(loss)
         self._final_state = state
 
-        # TODO HERE
+        if not is_training:
+            return
 
+        self._lr = tf.Variable(0.0, trainable=False)
+        tvars = tf.trainable_variables()
+        grads, _ = tf.clip_by_global_norm(tf.gradients(self._cost, tvars),
+                                           config.max_grad_norm)
+        optimizer = tf.train.GradientDescentOptimizer(self._lr)
+        self._train_op = optimizer.apply_gradients(
+            zip(grads, tvars),
+            global_step=tf.train.get_or_create_global_step()
+        )
+        self._new_lr = tf.placeholder(
+            tf.float32,
+            name='new_learning_rate'
+        )
+        self._lr_update_op = tf.assign(self._lr, self._new_lr)
+
+    def assign_lr(self, session, lr_value):
+        session.run(self._lr_update_op, feed_dict={self._new_lr: lr_value})
+
+    def export_ops(self, name):
+        """
+        Exports ops to collections
+        :param name:
+        :return:
+        """
+        self._name = name
+        ops = {util.with_prefix(self._name, "cost"): self._cost}
+        if self._is_traning:
+            ops.update(lr=self._lr, new_lr=self._new_lr, lr_update=self._lr_update_op)
+            if self._rnn_params:
+                ops.update(run_params=self._rnn_params)
+        for name, op in ops.items():
+            tf.add_to_collection(name, op)
+        self._initial_state_name = util.with_prefix(self._name, "initial")
+        self._final_state_name = util.with_prefix(self._name, "final")
+        util.export_state_tuples(self._initial_state, self._initial_state_name)
+        util.export_state_tuples(self._final_state, self._final_state_name)
+
+    def import_ops(self):
+        if self._is_traning:
+            self._train_op = tf.get_collection_ref("train_op")[0]
+            self._lr = tf.get_collection_ref("lr")[0]
+            self._new_lr = tf.get_collection_ref("new_lr")[0]
+            rnn_params = tf.get_collection_ref("rnn_params")
+            if self._cell and rnn_params:
+                params_saveable = tf.contrib.cudnn_rnn.RNNParamsSaveable(
+                    self._cell,
+                    self._cell.params_to_canonical,
+                    self._cell.canonical_to_params,
+                    rnn_params,
+                    base_variable_scope="Model/RNN"
+                )
+                tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
+        self._cost = tf.get_collection_ref(util.with_prefix(self._name, "cost"))[0]
+        num_replicas = 1
+        self._initial_state = util.import_state_tuples(
+            self._initial_state, self._initial_state_name, num_replicas
+        )
+        self._final_state = util.import_state_tuples(
+            self._final_state, self._final_state_name, num_replicas
+        )
+
+    @property
+    def input(self):
+        return self._input
+
+    @property
+    def initial_state(self):
+        return self._initial_state
+
+    @property
+    def cost(self):
+        return self._cost
+
+    @property
+    def final_state(self):
+        return self._final_state
+
+    @property
+    def lr(self):
+        return self._lr
+
+    @property
+    def train_op(self):
+        return self._train_op
 
 
     def _build_rnn_graph_cudnn(self, inputs, config, is_training):
-        inputs = tf.tranpose(inputs, [1, 0, 2])
+        inputs = tf.transpose(inputs, [1, 0, 2])
         self._cell = tf.contrib.cudnn_rnn.CudnnLSTM(
             num_layers=config.num_layers,
             num_units=config.hidden_size,
@@ -177,4 +262,111 @@ class TestConfig(object):
     lr_decay = 0.5
     batch_size = 20
     vocab_size = 10000
+
+def run_epoch(session, model, eval_op=None, verbose=False):
+    """
+    runs the model on the given data
+    :param session:
+    :param model:
+    :param eval_op:
+    :param verbose:
+    :return:
+    """
+    start_time = time.time()
+    costs = 0.0
+    iters = 0
+    state = session.run(model.initial_state)
+    fetches = {
+        "cost": model.cost,
+        "final_state": model.final_state,
+    }
+    if eval_op is not None:
+        fetches["eval_op"] = eval_op
+
+    for step in range(model.input.epoch_size):
+        feed_dict = {}
+        for i, (c, h) in enumerate(model.initial_state):
+            feed_dict[c] = state[i].c
+            feed_dict[h] = state[i].h
+
+        vals = session.run(fetches, feed_dict)
+        cost = vals["cost"]
+        state = vals["final_state"]
+
+        costs += cost
+        iters += model.input.num_steps
+
+        if verbose and step %(model.input.epoch_size // 10) == 10:
+            print("%.3f perplexity: %3f speed: %.0f wps" %
+                  (step*1.0 / model.input.epoch_size, np.exp(costs / iters),
+                   iters * model.input.batch_size * max(1, FLAGS.num_gpu) / (time.time() - start_time)))
+
+    return np.exp(costs  / iters)
+
+def get_config():
+    config = None
+    if FLAGS.model == "small":
+        config = SmallConfig()
+    elif FLAGS.model == "medium":
+        config = MediumConfig()
+    elif FLAGS.model == "large":
+        config = LargeConfig()
+    elif FLAGS.model == "test":
+        config = TestConfig
+    else:
+        raise ValueError("Invalid model: %s" % FLAGS.model)
+    return config
+
+
+def main(_):
+    if not FLAGS.data_path:
+        raise ValueError("Must set --data_path to PTB data directory")
+    raw_data = reader.ptb_raw_data(FLAGS.data_path)
+    train_data, valid_data, test_data, _ = raw_data
+    config = get_config()
+    eval_config = get_config()
+    eval_config.batch_size = 1
+    eval_config.num_steps = 1
+
+    with tf.Graph().as_default():
+        initializer = tf.random_uniform_initializer(
+            -config.init_scale,
+            config.init_scale
+        )
+
+        with tf.name_scope("Train"):
+            train_input = PTBInput(config=config, data=train_data, name="TrainInput")
+            with tf.variable_scope("Model", reuse=None, initializer=initializer):
+                model = PTBModel(is_training=True, config=config, input_=train_input)
+            tf.summary.scalar("Training Loss", model.cost)
+            tf.summary.scalar("Learning Rate", model.lr)
+
+        models = {"Train": model}
+        for name, model in models.items():
+            model.export_ops(name)
+        metagraph = tf.train.export_meta_graph()
+        #util.auto_parallel(metagraph, model)
+        with tf.Graph().as_default():
+            tf.train.import_meta_graph(metagraph)
+            model.import_ops()
+            sv = tf.train.Supervisor(logdir=FLAGS.save_path)
+            config_proto = tf.ConfigProto(allow_soft_placement=False)
+            with sv.managed_session(config=config_proto) as sess:
+                for i in range(config.max_max_epoch):
+                    lr_decay = config.lr_decay ** max(i + 1 - config.max_epoch, 0.0)
+                    model.assign_lr(sess, config.learning_rate * lr_decay)
+
+                    print("epoch: %d Leanring Rate: %.3f" % (i, model.lr))
+                    train_perplexity = run_epoch(sess, model, eval_op=model.train_op, verbose=True)
+
+
+if __name__ == '__main__':
+    tf.app.run();
+
+
+
+
+
+
+
 
