@@ -27,8 +27,14 @@ tf.flags.DEFINE_integer(
     "num_gpus", 1,
     "number of GPU. It's useless now"
 )
+tf.flags.DEFINE_string(
+    "rnn_mode", "basic",
+    "the low level implementation of lstm cell : CUDNN OR BASIC OR BLOCK"
+)
 FLAGS = tf.flags.FLAGS
-
+BASIC = "basic"
+CUDNN = "cudnn"
+BLOCK = "block"
 
 def data_type():
     return tf.float16 if FLAGS.use_fp16 else tf.float32
@@ -52,6 +58,8 @@ class PTBModel(object):
     def __init__(self, is_training, config, input_):
         self._is_traning = is_training
         self._input = input_
+        self._rnn_params = None
+        self._cell = None
         self.batch_size = input_.batch_size
         self.num_steps = input_.num_steps
         hidden_size = config.hidden_size
@@ -65,7 +73,7 @@ class PTBModel(object):
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
 
-        output, state = self._build_rnn_graph_cudnn(inputs, config, is_training)
+        output, state = self._build_rnn_graph(inputs, config, is_training)
 
         softmax_weights = tf.get_variable(
             "softmax_weights", [hidden_size, vocab_size], data_type()
@@ -106,6 +114,13 @@ class PTBModel(object):
 
     def assign_lr(self, session, lr_value):
         session.run(self._lr_update_op, feed_dict={self._new_lr: lr_value})
+        
+    def _build_rnn_graph(self, inputs, config, is_training):
+        if(config.rnn_mode == CUDNN):
+            return self._build_rnn_graph_cudnn(inputs, config, is_training)
+        else:
+            return self._build_rnn_graph_lstm(inputs, config, is_training)
+        
 
     def export_ops(self, name):
         """
@@ -116,7 +131,7 @@ class PTBModel(object):
         self._name = name
         ops = {util.with_prefix(self._name, "cost"): self._cost}
         if self._is_traning:
-            ops.update(lr=self._lr, new_lr=self._new_lr, lr_update=self._lr_update_op)
+            ops.update(lr=self._lr, new_lr=self._new_lr, lr_update_op=self._lr_update_op)
             if self._rnn_params:
                 ops.update(run_params=self._rnn_params)
         for name, op in ops.items():
@@ -131,6 +146,7 @@ class PTBModel(object):
             self._train_op = tf.get_collection_ref("train_op")[0]
             self._lr = tf.get_collection_ref("lr")[0]
             self._new_lr = tf.get_collection_ref("new_lr")[0]
+            self._lr_update_op = tf.get_collection_ref("lr_update_op")[0]
             rnn_params = tf.get_collection_ref("rnn_params")
             if self._cell and rnn_params:
                 params_saveable = tf.contrib.cudnn_rnn.RNNParamsSaveable(
@@ -199,6 +215,41 @@ class PTBModel(object):
         outputs = tf.reshape(outputs, [-1, config.hidden_size])
         return outputs, (tf.contrib.rnn.LSTMStateTuple(h=h, c=c),)
 
+    def _get_lstm_cell(self, config, is_training):
+        if(config.rnn_mode == BASIC):
+            return tf.contrib.rnn.BasicLSTMCell(
+                config.hidden_size, forget_bias=0.0, state_is_tuple=True,
+                reuse=not is_training
+            )
+        if(config.rnn_mode == BLOCK):
+            return tf.contrib.rnn.LSTMBlockCell(
+                config.hidden_size, forget_bias=0.0
+            )
+        raise ValueError("rnn_mode %s not supported" % config.rnn_mode)
+    
+    
+    def _build_rnn_graph_lstm(self, inputs, config, is_training):
+        def make_cell():
+            cell = self._get_lstm_cell(config, is_training)
+            if is_training and config.keep_prob < 1:
+                cell = tf.contrib.rnn.DropoutWrapper(
+                    cell, output_keep_prob=config.keep_prob
+                )
+            return cell
+        cell = tf.contrib.rnn.MultiRNNCell(
+            [make_cell() for _ in range(config.num_layers)], state_is_tuple=True
+        )
+        self._initial_state = cell.zero_state(config.batch_size, data_type())
+        state = self._initial_state
+        outputs = []
+        with tf.variable_scope("RNN"):
+            for time_step in range(self.num_steps):
+                if time_step > 0:
+                    tf.get_variable_scope().reuse_variables()
+                (cell_output, state) = cell(inputs[:, time_step, :], state)
+                outputs.append(cell_output)
+        output = tf.reshape(tf.concat(outputs, 1), [-1, config.hidden_size])
+        return output, state
 
 class SmallConfig(object):
     """Small config."""
@@ -299,7 +350,7 @@ def run_epoch(session, model, eval_op=None, verbose=False):
         if verbose and step %(model.input.epoch_size // 10) == 10:
             print("%.3f perplexity: %3f speed: %.0f wps" %
                   (step*1.0 / model.input.epoch_size, np.exp(costs / iters),
-                   iters * model.input.batch_size * max(1, FLAGS.num_gpu) / (time.time() - start_time)))
+                   iters * model.input.batch_size * max(1, FLAGS.num_gpus) / (time.time() - start_time)))
 
     return np.exp(costs  / iters)
 
@@ -315,6 +366,7 @@ def get_config():
         config = TestConfig
     else:
         raise ValueError("Invalid model: %s" % FLAGS.model)
+    config.rnn_mode = FLAGS.rnn_mode
     return config
 
 
@@ -356,7 +408,7 @@ def main(_):
                     lr_decay = config.lr_decay ** max(i + 1 - config.max_epoch, 0.0)
                     model.assign_lr(sess, config.learning_rate * lr_decay)
 
-                    print("epoch: %d Leanring Rate: %.3f" % (i, model.lr))
+                    print("epoch: %d Leanring Rate: %.3f" % (i, sess.run(model.lr)))
                     train_perplexity = run_epoch(sess, model, eval_op=model.train_op, verbose=True)
 
 
