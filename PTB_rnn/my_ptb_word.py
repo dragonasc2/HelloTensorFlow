@@ -16,7 +16,7 @@ tf.flags.DEFINE_string(
     "where to store the training/testing data"
 )
 tf.flags.DEFINE_string(
-    "save_path", None,
+    "save_path", None, #"my_log_save",
     "Model output directgory"
 )
 tf.flags.DEFINE_bool(
@@ -348,8 +348,8 @@ def run_epoch(session, model, eval_op=None, verbose=False):
         iters += model.input.num_steps
 
         if verbose and step %(model.input.epoch_size // 10) == 10:
-            print("%.3f perplexity: %3f speed: %.0f wps" %
-                  (step*1.0 / model.input.epoch_size, np.exp(costs / iters),
+            print("%.3f perplexity: %.3f speed: %.0f wps" %
+                  (step * 1.0 / model.input.epoch_size, np.exp(costs / iters),
                    iters * model.input.batch_size * max(1, FLAGS.num_gpus) / (time.time() - start_time)))
 
     return np.exp(costs  / iters)
@@ -389,27 +389,45 @@ def main(_):
         with tf.name_scope("Train"):
             train_input = PTBInput(config=config, data=train_data, name="TrainInput")
             with tf.variable_scope("Model", reuse=None, initializer=initializer):
-                model = PTBModel(is_training=True, config=config, input_=train_input)
-            tf.summary.scalar("Training Loss", model.cost)
-            tf.summary.scalar("Learning Rate", model.lr)
+                train_model = PTBModel(is_training=True, config=config, input_=train_input)
+            tf.summary.scalar("Training Loss", train_model.cost)
+            tf.summary.scalar("Learning Rate", train_model.lr)
 
-        models = {"Train": model}
+
+        with tf.name_scope("Valid"):
+            valid_input = PTBInput(config=config, data=valid_data, name="ValidInput")
+            with tf.variable_scope("Model", reuse=True):
+                valid_model = PTBModel(is_training=False, config=config, input_=valid_input)
+            tf.summary.scalar("Valid Loss", valid_model.cost)
+
+        with tf.name_scope("Test"):
+            test_input = PTBInput(config=eval_config, data=test_data, name="TestInput")
+            with tf.variable_scope("Model", reuse=True, initializer=initializer):
+                test_model = PTBModel(is_training=False, config=eval_config, input_=test_input)
+            tf.summary.scalar("Test Loss", test_model.cost)
+
+        models = {"Train": train_model} #, "Valid": valid_model, "Test":test_model}
         for name, model in models.items():
             model.export_ops(name)
         metagraph = tf.train.export_meta_graph()
         #util.auto_parallel(metagraph, model)
         with tf.Graph().as_default():
             tf.train.import_meta_graph(metagraph)
-            model.import_ops()
+            for model in models.values():
+                model.import_ops()
             sv = tf.train.Supervisor(logdir=FLAGS.save_path)
             config_proto = tf.ConfigProto(allow_soft_placement=False)
             with sv.managed_session(config=config_proto) as sess:
                 for i in range(config.max_max_epoch):
                     lr_decay = config.lr_decay ** max(i + 1 - config.max_epoch, 0.0)
-                    model.assign_lr(sess, config.learning_rate * lr_decay)
+                    train_model.assign_lr(sess, config.learning_rate * lr_decay)
+                    print("epoch: %d Leanring Rate: %.3f" % (i, sess.run(train_model.lr)))
 
-                    print("epoch: %d Leanring Rate: %.3f" % (i, sess.run(model.lr)))
-                    train_perplexity = run_epoch(sess, model, eval_op=model.train_op, verbose=True)
+                    train_perplexity = run_epoch(sess, train_model, eval_op=train_model.train_op, verbose=True)
+
+                    print("epoch: %d, valid Perplexity: %.3f" % ((i+1), run_epoch(sess,valid_model)))
+
+                print("Test Perplexity: %.3f" % run_epoch(sess, test_model))
 
 
 if __name__ == '__main__':
