@@ -76,8 +76,8 @@ def ptb_producer(raw_data, batch_size, num_steps):
         data_len = tf.size(raw_data)
         batch_len = data_len // batch_size
         data = tf.reshape(raw_data[0:batch_len * batch_size], [batch_size, batch_len])
-
-        epoch_size = (batch_len -1 ) // num_steps
+        # -1 is because y is right shifted x by 1
+        epoch_size = (batch_len - 1) // num_steps
         assertion = tf.assert_positive(epoch_size, message="epoch_size == 0")
         with tf.control_dependencies([assertion]):
             epoch_size = tf.identity(epoch_size, name='epoch_size')
