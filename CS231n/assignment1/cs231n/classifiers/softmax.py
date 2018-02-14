@@ -30,7 +30,20 @@ def softmax_loss_naive(W, X, y, reg):
   # here, it is easy to run into numeric instability. Don't forget the        #
   # regularization!                                                           #
   #############################################################################
-  pass
+  logits = np.dot(X, W)
+  h_1 = np.exp(logits)
+  h_2 = h_1 / np.sum(h_1, axis=1, keepdims=True)
+  dLogitsdW = X.T
+  dLdLogits = np.zeros((X.shape[0], W.shape[1]))
+  for idx in range(X.shape[0]):
+    loss += - np.log(h_2[idx, y[idx]])
+    dLdLogits[idx, :] = h_2[idx]
+    dLdLogits[idx, y[idx]] -= 1
+
+  loss /= X.shape[0]
+  loss += np.sum(reg * W * W)
+  dW = dLogitsdW.dot(dLdLogits) / X.shape[0] + 2 * reg * W
+
   #############################################################################
   #                          END OF YOUR CODE                                 #
   #############################################################################
@@ -54,7 +67,17 @@ def softmax_loss_vectorized(W, X, y, reg):
   # here, it is easy to run into numeric instability. Don't forget the        #
   # regularization!                                                           #
   #############################################################################
-  pass
+  y_one_hot = np.zeros((y.shape[0], W.shape[1]))
+  idxs = np.arange(y.shape[0])
+  y_one_hot[idxs, y] = 1
+
+  logits = np.dot(X, W)
+  h_1 = np.exp(logits)
+  h_2 = h_1 / np.sum(h_1, axis=1, keepdims=True)
+  loss = - np.sum(y_one_hot * np.log(h_2) / y.shape[0]) + np.sum(reg * W * W)
+  dLdLogits = y_one_hot * (h_2 - 1) + (1 - y_one_hot) * (h_2)
+  dLogitsdW = X.T
+  dW = dLogitsdW.dot(dLdLogits) / y.shape[0] + 2 * reg * W
   #############################################################################
   #                          END OF YOUR CODE                                 #
   #############################################################################
