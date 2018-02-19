@@ -260,6 +260,9 @@ class FullyConnectedNet(object):
                 last_layer_output = hidden['bn%d' % (idx)]
             hidden['h%d_relu' %(idx)], hidden_cache['h%d_relu_cache' % (idx)] = relu_forward(last_layer_output)
             last_layer_output = hidden['h%d_relu' %(idx)]
+            if self.use_dropout:
+                hidden['dropout%d' % (idx)], hidden_cache['dropout%d_cache' % (idx)] = dropout_forward(last_layer_output, self.dropout_param)
+                last_layer_output = hidden['dropout%d' % (idx)]
         idx += 1
         scores, scores_cache = affine_forward(last_layer_output, self.params['W%d' % (idx)], self.params['b%d' % (idx)])
         ############################################################################
@@ -295,6 +298,9 @@ class FullyConnectedNet(object):
         grads['b%d' % (self.num_layers)] = db
 
         for idx in range(self.num_layers-1, 0, -1):
+            if self.use_dropout:
+                ddropout = dropout_backward(dup_stream, hidden_cache['dropout%d_cache' % (idx)])
+                dup_stream = ddropout
             drelu = relu_backward(dup_stream, hidden_cache['h%d_relu_cache' % idx])
             dup_stream = drelu
             if self.use_batchnorm:
