@@ -8,7 +8,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('log_interval', 100, 'interval between adjacent logs')
 
 
-BATCH_SIZE = 100
+BATCH_SIZE = 128
 
 def main():
     LR_placeholder = tf.placeholder(tf.float32,[None,None,None,1],'bicubiced_LR')
@@ -45,7 +45,12 @@ def main():
             tf.constant(0.01,dtype=tf.float32,shape=[1]),
             name = 'biases'
         )
-        SR = tf.nn.conv2d(h_conv2,weights,strides=[1,1,1,1],padding='VALID')+biases
+        h_conv3 = tf.nn.conv2d(h_conv2,weights,strides=[1,1,1,1],padding='VALID')+biases
+    shortcut = tf.strided_slice(LR_placeholder, begin=[0, 6, 6, 0],
+                                end=[tf.shape(LR_placeholder)[0],
+                                     tf.shape(LR_placeholder)[1]-6,
+                                     tf.shape(LR_placeholder)[2]-6, 1])
+    SR = h_conv3 + shortcut
     MSE = tf.reduce_mean(tf.square(SR-GT_placeholder))
     PSNR = 10*tf.log(1/MSE)/tf.log(10.0)
 

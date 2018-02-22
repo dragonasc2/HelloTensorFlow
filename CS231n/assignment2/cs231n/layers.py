@@ -400,8 +400,10 @@ def conv_forward_naive(x, w, b, conv_param):
     # Hint: you can use the function np.pad for padding.                      #
     ###########################################################################
     padding = ((0, 0), (0, 0), (conv_param['pad'], conv_param['pad']), (conv_param['pad'], conv_param['pad']))
-    x_padded = np.pad(x, padding, 'constant', constant_values=0)
-    out = np.zeros((x_padded.shape[0], w.shape[0], 1 + (x_padded.shape[2] - w.shape[2]) // conv_param['stride'] , 1 + (x_padded.shape[3] - w.shape[3]) // conv_param['stride']), dtype=np.float32)
+    x_padded = np.pad(x, padding, 'constant')
+    #x_padded = np.zeros((x.shape[0], x.shape[1], x.shape[2]+ 2 * conv_param['pad'], x.shape[3] + 2 * conv_param['pad']))
+    #x_padded[:, :, conv_param['pad']:-conv_param['pad'], conv_param['pad']:-conv_param['pad']] = x
+    out = np.zeros((x_padded.shape[0], w.shape[0], 1 + (x_padded.shape[2] - w.shape[2]) // conv_param['stride'] , 1 + (x_padded.shape[3] - w.shape[3]) // conv_param['stride']), dtype=np.float64)
     for filter in  range(w.shape[0]):
         for height in range(1 + (x_padded.shape[2] - w.shape[2]) // conv_param['stride']):
             for width in range(1 + (x_padded.shape[3] - w.shape[3]) // conv_param['stride']):
@@ -431,7 +433,24 @@ def conv_backward_naive(dout, cache):
     ###########################################################################
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
-    pass
+    x, w, b, conv_param = cache
+    db = np.sum(dout, axis=(0, 2, 3))
+    padding = ((0, 0), (0, 0), (conv_param['pad'], conv_param['pad']), (conv_param['pad'], conv_param['pad']))
+    x_padded = np.pad(x, padding, 'constant')
+    dx_padded = np.pad(np.zeros_like(x), padding, 'constant', constant_values=0)
+    stride = conv_param['stride']
+    for filter in range(w.shape[0]):
+        for height in range(dout.shape[2]):
+            for width in range(dout.shape[3]):
+                dx_padded[:, :, height*stride:height*stride + w.shape[2], width*stride:width*stride + w.shape[3]] += dout[:, filter:filter+1, height:height+1, width:width+1] * w[filter, :, :, :]
+
+    dx = dx_padded[:, :, conv_param['pad']:-conv_param['pad'], conv_param['pad']:-conv_param['pad']]
+    dw = np.zeros_like(w)
+    for filter in range(w.shape[0]):
+        for height in range(dout.shape[2]):
+            for width in range(dout.shape[3]):
+                dw[filter, :, :, :] += np.sum(dout[:, filter:filter+1, height:height+1, width:width+1] * x_padded[:, :, height*stride:height*stride + w.shape[2], width*stride:width*stride + w.shape[3]], axis=0)
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -457,7 +476,13 @@ def max_pool_forward_naive(x, pool_param):
     ###########################################################################
     # TODO: Implement the max pooling forward pass                            #
     ###########################################################################
-    pass
+    pool_height = pool_param['pool_height']
+    pool_width = pool_param['pool_width']
+    stride = pool_param['stride']
+    out = np.zeros((x.shape[0], x.shape[1], 1 + (x.shape[2] - pool_height) // stride, 1 + (x.shape[3] - pool_width) // stride))
+    for height in range(1 + (x.shape[2] - pool_height) // stride):
+        for width in range(1 + (x.shape[3] - pool_width) // stride):
+            out[:, :, height, width] = np.max(x[:, :, height * stride:height * stride + pool_height, width * stride:width * stride + pool_width], axis=(2, 3))
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -480,7 +505,20 @@ def max_pool_backward_naive(dout, cache):
     ###########################################################################
     # TODO: Implement the max pooling backward pass                           #
     ###########################################################################
-    pass
+    x, pool_param = cache
+    pool_height = pool_param['pool_height']
+    pool_width = pool_param['pool_width']
+    stride = pool_param['stride']
+    dx = np.zeros_like(x)
+    for n in range(x.shape[0]):
+        for c in range(x.shape[1]):
+            for height in range(1 + (x.shape[2] - pool_height) // stride):
+                for width in range(1 + (x.shape[3] - pool_width) // stride):
+                    tmp = x[n, c, height * stride:height * stride + pool_height, width * stride:width * stride + pool_width]
+                    max_loc = np.argmax(tmp)
+                    max_h = max_loc // stride + height*stride
+                    max_w = max_loc % stride + width*stride
+                    dx[n, c, max_h, max_w] = dout[n, c, height, width]
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -518,7 +556,15 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     # version of batch normalization defined above. Your implementation should#
     # be very short; ours is less than five lines.                            #
     ###########################################################################
-    pass
+
+    sample_mean = np.mean(x, axis=(0, 2, 3))
+    sample_var = np.var(x, axis=(0, 2, 3))
+    running_mean = bn_param.get('running_mean', np.zeros((x.shape[1]))) * bn_param.get('momentum', 0.9)
+    running_var = bn_param.get('running_var', np.zeros((x.shape[1]))) * bn_param.get('momentum', 0.9)
+    x_normed = (x - sample_mean[np.newaxis, :, np.newaxis, np.newaxis]) / (np.sqrt(sample_var[np.newaxis, :, np.newaxis, np.newaxis]) + bn_param.get('epsilon', 1e-8))
+    out = x_normed * gamma[np.newaxis, :, np.newaxis, np.newaxis] + beta[np.newaxis, :, np.newaxis, np.newaxis]
+    bn_param['running_mean'] = running_mean
+    bn_param['running_var'] = running_var
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################

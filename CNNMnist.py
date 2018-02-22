@@ -109,7 +109,7 @@ def main():
     cross_entropy = loss(logits,labels_placeholder)
     optimizer = train(cross_entropy,1e-4)
     eval_correct = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(logits,1),tf.argmax(labels_placeholder,1)),tf.float32))
-
+    tf.nn.batch_normalization()
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         for i in range(100000):
