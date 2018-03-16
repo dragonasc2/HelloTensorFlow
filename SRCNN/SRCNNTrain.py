@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('log_interval', 100, 'interval between adjacent logs')
+tf.app.flags.DEFINE_integer('log_interval', 100, 'interval between adjacent logs')
 
 
 BATCH_SIZE = 128
@@ -60,7 +60,7 @@ def main():
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction  = 0.5
     with tf.Session(config = config) as sess:
-        with tf.device('/device:GPU:0'):
+        with tf.device('/device:CPU:0'):
             sess.run(tf.global_variables_initializer())
             start_time = time.time()
             for i in range(1000000):
