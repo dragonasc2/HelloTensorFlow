@@ -17,3 +17,5 @@ word2vec (basic version)
 CS231n homeworks
 
 Angular-Softmax (for mnist DEMO)
+
+L2-contrained Softmax (for mnist DEMO)

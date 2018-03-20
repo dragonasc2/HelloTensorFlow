@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-def a_softmax_loss(embeddings, labels, num_class, m, name='various_softmax'):
+def a_softmax_loss(embeddings, labels, num_class, m, name='a_softmax'):
     """
     Angular softmax loss
     Args:

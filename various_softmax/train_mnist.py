@@ -2,6 +2,7 @@ import tensorflow as tf
 import input_data
 import numpy as np
 from various_softmax import a_softmax_loss
+from various_softmax import l2_softmax_loss
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 
@@ -30,10 +31,31 @@ def inference(image_input, embedding_size):
     return embeddings
 
 
-def cal_logits(embeddings, labels, num_class, m):
-    logits, loss = a_softmax_loss.a_softmax_loss(embeddings, labels, num_class, m, 'various_softmax')
-    # logits = tf.layers.dense(embeddings, num_class)
-    # loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels))
+def cal_logits(embeddings, labels, num_class, methods):
+    """
+    apply required softmax layer to embedding.
+
+    original softmax, A-Softmax, L2-Softmax have been implemented.
+    Args:
+        embedddings: [N, dim] tensor
+        labels: [N, num_class] tensor
+        num_class: number of classes
+        methods:
+        one of 'Softmax', 'A-Softmax', 'L2-Softmax'
+    Returns:
+        logits
+        loss
+    """
+    if methods == 'Softmax':
+        logits = tf.layers.dense(embeddings, num_class)
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels))
+    elif methods == 'A-Softmax':
+        logits, loss = a_softmax_loss.a_softmax_loss(embeddings, labels, num_class, 4, 'various_softmax')
+    elif methods == 'L2-Softmax':
+        logits = l2_softmax_loss.l2_softmax(embeddings, num_class)
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels))
+    else:
+        raise ValueError('%s not supported. Now only supports Softmax / A-Softmax / L2-Softmax')
 
     return logits, loss
 
@@ -84,7 +106,7 @@ def main():
     labels = tf.argmax(labels_one_hot_placeholder, 1)
     keep_prob = tf.placeholder(tf.float32)
     embeddings = inference(image, 2)
-    logits, loss = cal_logits(embeddings, labels, NUM_CLASS, m=1)
+    logits, loss = cal_logits(embeddings, labels, NUM_CLASS, 'L2-Softmax')
 
     learning_rate = 5e-4
     optimizer = tf.train.AdamOptimizer(learning_rate)
@@ -105,7 +127,6 @@ def main():
             if i % 5000 == 0:
                 sample_data = np.array(range(data_set.test.images.shape[0]))
                 np.random.shuffle(sample_data)
-                #sample_data = sample_data[:BATCH_SIZE]
                 test_data = data_set.test.images[sample_data, :]
                 test_labels = data_set.test.labels[sample_data]
                 feat_vec = sess.run(embeddings, feed_dict={image_flat_placeholder: test_data})
