@@ -13,3 +13,7 @@ Iris ( by  tf.esimator, which i copyed from tensorflow's tutorial, or by handwri
 SRCNN ( by 3-layers of Convolutional Neurual Network, achiveves the state-of-the-art performance)
 
 word2vec (basic version)
+
+CS231n homeworks
+
+Angular-Softmax (for mnist DEMO)
