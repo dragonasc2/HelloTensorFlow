@@ -3,6 +3,8 @@ import input_data
 import numpy as np
 from various_softmax import a_softmax_loss
 from various_softmax import l2_softmax_loss
+from various_softmax import cos_softmax_loss
+from various_softmax import arc_softmax_loss
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 
@@ -46,14 +48,19 @@ def cal_logits(embeddings, labels, num_class, methods):
         logits
         loss
     """
-    if methods == 'Softmax':
+    if methods.lower() == 'softmax':
         logits = tf.layers.dense(embeddings, num_class)
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels))
-    elif methods == 'A-Softmax':
+    elif methods.lower() == 'a-softmax':
         logits, loss = a_softmax_loss.a_softmax_loss(embeddings, labels, num_class, 4, 'various_softmax')
-    elif methods == 'L2-Softmax':
+    elif methods.lower() == 'l2-softmax':
         logits = l2_softmax_loss.l2_softmax(embeddings, num_class)
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels))
+    elif methods.lower() == 'cos-softmax':
+        logits, loss = cos_softmax_loss.cos_softmax_loss(embeddings, labels, num_class, s=16, m=0.35, name='various_softmax')
+    elif methods.lower() == 'arc-softmax':
+        logits, loss = arc_softmax_loss.arc_softmax_loss(embeddings, labels, num_class, s=1, m=0.5,
+                                                         name='various_softmax')
     else:
         raise ValueError('%s not supported. Now only supports Softmax / A-Softmax / L2-Softmax')
 
@@ -106,13 +113,14 @@ def main():
     labels = tf.argmax(labels_one_hot_placeholder, 1)
     keep_prob = tf.placeholder(tf.float32)
     embeddings = inference(image, 2)
-    logits, loss = cal_logits(embeddings, labels, NUM_CLASS, 'L2-Softmax')
+    logits, loss = cal_logits(embeddings, labels, NUM_CLASS, 'arc-softmax')
 
     learning_rate = 5e-4
     optimizer = tf.train.AdamOptimizer(learning_rate)
     train_step = optimizer.minimize(loss)
     eval_correct = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(logits, 1), labels), tf.float32))
-    with tf.Session() as sess:
+    config = tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.4))
+    with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
         for i in range(20001):
             batch_images_flat, batch_labels = data_set.train.next_batch(BATCH_SIZE)
@@ -124,7 +132,7 @@ def main():
                 print('%dth iter: train loss : %.4f' % (i, this_train_loss))
                 print('test accuracy : %.4f' % (do_eval(sess, eval_correct, image_flat_placeholder,
                                                             labels_one_hot_placeholder, data_set.test)))
-            if i % 5000 == 0:
+            if i % 5000 == 0 and i != 0:
                 sample_data = np.array(range(data_set.test.images.shape[0]))
                 np.random.shuffle(sample_data)
                 test_data = data_set.test.images[sample_data, :]
